@@ -1,13 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Button, Modal, TextInput, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import * as Notifications from 'expo-notifications';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import { makeRedirectUri, useAuthRequest } from 'expo-auth-session';
 import LottieView from 'lottie-react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Icon } from 'react-native-elements'; // Импортируем компонент Icon из React Native Elements
+import { Icon } from 'react-native-elements';
+
+// Завершаем возможные незаконченные сессии аутентификации
+WebBrowser.maybeCompleteAuthSession();
 
 export default function App() {
+  // Состояния для управления событиями и календарем
   const [selectedDate, setSelectedDate] = useState(null);
   const [events, setEvents] = useState({});
   const [modalVisible, setModalVisible] = useState(false);
@@ -16,6 +23,7 @@ export default function App() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [activeTab, setActiveTab] = useState('calendar'); // Стейт для активной вкладки
+  const [user, setUser] = useState(null); // Состояние для хранения данных пользователя
 
   const handleDayPress = (day) => {
     setSelectedDate(day.dateString);
@@ -162,15 +170,40 @@ export default function App() {
     );
   };
 
-  const renderProfileTab = () => {
-    return (
-      <View style={styles.container}>
-        <Text>Имя пользователя: John Doe</Text>
-        <Text>Фото пользователя:</Text>
-        {/* В будущем сюда можно будет добавить фото пользователя */}
-      </View>
-    );
-  };
+
+  // Запрос на авторизацию через Google
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: '<ВАШ_GOOGLE_CLIENT_ID>', // Замените на свой Google Client ID
+    redirectUri: makeRedirectUri({ useProxy: true }),
+  });
+
+  // Обработчик ответа от Google после аутентификации
+  useEffect(() => {
+    if (response?.type === 'success') {
+      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${response.authentication.accessToken}` },
+      })
+        .then(res => res.json())
+        .then(data => setUser(data)); // Сохраняем данные пользователя в состояние
+    }
+  }, [response]);
+
+  // Вкладка профиля
+  const renderProfileTab = () => (
+    <View style={styles.containerAuth}>
+      {user ? (
+        <View>
+          <Text>Имя пользователя: {user.name}</Text>
+          <Text>Email: {user.email}</Text>
+          <Button title="Выйти" onPress={() => setUser(null)} />
+        </View>
+      ) : (
+        <View style={styles.loginButtonContainer}>
+          <Button title="Войти через Google" onPress={() => promptAsync()} />
+        </View>
+      )}
+    </View>
+  );
 
   const renderFaqTab = () => {
     return (
@@ -278,5 +311,15 @@ const styles = StyleSheet.create({
   navItem: {
     alignItems: 'center',
     padding: 10, // Добавляем небольшой отступ для кнопок
+  },
+  loginButtonContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  containerAuth: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
